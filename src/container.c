@@ -1,4 +1,3 @@
-#define _GNU_SOURCE
 #include "boxforge.h"
 #include "namespaces.h"
 #include "cgroup.h"
@@ -13,10 +12,14 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-static ContainerConfig *active_cfg;
-
 static int child_main(void *arg) {
     ContainerConfig *cfg = arg;
+    char release;
+
+    /* The parent installs cgroup limits before the payload can start. */
+    if (cfg->sync_fd < 0 || read(cfg->sync_fd, &release, 1) != 1)
+        _exit(124);
+    close(cfg->sync_fd);
 
     if (namespace_setup(cfg) < 0) {
         perror("namespace setup");
@@ -39,31 +42,65 @@ static int child_main(void *arg) {
 }
 
 int container_run(ContainerConfig *cfg) {
-    if (!cfg || !cfg->argv || !cfg->argv[0]) { errno = EINVAL; return -1; }
-
-    static char stack[BF_STACK_SIZE] __attribute__((aligned(16)));
-    active_cfg = cfg;
-    int flags = namespace_clone_flags();
-    pid_t pid = clone(child_main, stack + sizeof(stack), flags, cfg);
-    if (pid < 0) return -1;
-    cfg->child_pid = pid;
-
-    /* The parent creates the cgroup after clone, then moves the child into it. */
-    if (cgroup_create(cfg->id, cfg->memory_limit, cfg->cpu_limit, pid) < 0) {
-        bf_log("cgroup setup failed: %s", strerror(errno));
-        kill(pid, SIGKILL);
-        waitpid(pid, NULL, 0);
+    if (!cfg || !cfg->argv || !cfg->argv[0]) {
+        errno = EINVAL;
         return -1;
     }
 
+    int sync_pipe[2];
+    if (pipe(sync_pipe) < 0)
+        return -1;
+
+    static char stack[BF_STACK_SIZE] __attribute__((aligned(16)));
+    cfg->sync_fd = sync_pipe[0];
+
+    pid_t pid = clone(child_main, stack + sizeof(stack),
+                      namespace_clone_flags(cfg), cfg);
+    if (pid < 0) {
+        close(sync_pipe[0]);
+        close(sync_pipe[1]);
+        return -1;
+    }
+
+    cfg->child_pid = pid;
+    close(sync_pipe[0]);
+
+    if (cgroup_create(cfg->id, cfg->memory_limit, cfg->cpu_limit, pid) < 0) {
+        int saved = errno;
+        bf_log("cgroup setup failed: %s", strerror(saved));
+        kill(pid, SIGKILL);
+        close(sync_pipe[1]);
+        waitpid(pid, NULL, 0);
+        cgroup_remove(cfg->id);
+        errno = saved;
+        return -1;
+    }
+
+    /* Release the child only after cgroup setup succeeds. */
+    if (write(sync_pipe[1], "1", 1) != 1) {
+        int saved = errno;
+        kill(pid, SIGKILL);
+        close(sync_pipe[1]);
+        waitpid(pid, NULL, 0);
+        cgroup_remove(cfg->id);
+        errno = saved ? saved : EIO;
+        return -1;
+    }
+    close(sync_pipe[1]);
+
     int status = 0;
     if (lifecycle_wait(pid, &status) < 0) {
+        int saved = errno;
+        kill(pid, SIGKILL);
+        waitpid(pid, NULL, 0);
         cgroup_remove(cfg->id);
+        errno = saved;
         return -1;
     }
 
     if (cgroup_remove(cfg->id) < 0)
-        bf_log("warning: failed to remove cgroup %s: %s", cfg->id, strerror(errno));
+        bf_log("warning: failed to remove cgroup %s: %s",
+               cfg->id, strerror(errno));
 
     if (WIFEXITED(status)) return WEXITSTATUS(status);
     if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
