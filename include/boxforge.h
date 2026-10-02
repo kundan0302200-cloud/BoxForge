@@ -1,14 +1,11 @@
 #ifndef BOXFORGE_H
 #define BOXFORGE_H
-
 #include <limits.h>
 #include <sys/types.h>
-
 #define BF_MAX_ID 64
 #define BF_STACK_SIZE (1024 * 1024)
 #define BF_MAX_INPUT 1024
 #define BF_MAX_ARGS 64
-
 typedef struct {
     const char *rootfs;
     char **argv;
@@ -23,8 +20,8 @@ typedef struct {
     pid_t child_pid;
     char id[BF_MAX_ID];
 } ContainerConfig;
-
 int container_run(ContainerConfig *cfg);
+int namespace_clone_flags(const ContainerConfig *cfg);
 int namespace_setup(ContainerConfig *cfg);
 int filesystem_setup(const char *rootfs);
 int cgroup_create(const char *id, const char *memory, const char *cpu, pid_t pid);
@@ -35,5 +32,4 @@ void bf_die(const char *msg);
 void bf_log(const char *fmt, ...);
 int parse_size_bytes(const char *s, unsigned long long *out);
 int parse_cpu_percent(const char *s, unsigned long long *quota, unsigned long long *period);
-
 #endif
