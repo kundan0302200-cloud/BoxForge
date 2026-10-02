@@ -22,6 +22,7 @@ typedef struct {
 } ContainerConfig;
 int container_run(ContainerConfig *cfg);
 int namespace_clone_flags(const ContainerConfig *cfg);
+int namespace_configure_userns(pid_t pid, uid_t host_uid, gid_t host_gid);
 int namespace_setup(ContainerConfig *cfg);
 int filesystem_setup(const char *rootfs);
 int cgroup_create(const char *id, const char *memory, const char *cpu, pid_t pid);
