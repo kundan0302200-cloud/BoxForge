@@ -15,42 +15,43 @@ int namespace_clone_flags(const ContainerConfig *cfg) {
     return flags;
 }
 
-static int setup_user_namespace(ContainerConfig *cfg) {
-    char path[128], map[128];
-    FILE *fp;
+static int write_proc_file(pid_t pid, const char *name, const char *value) {
+    char path[128];
+    int n = snprintf(path, sizeof(path), "/proc/%d/%s", (int)pid, name);
+    if (n < 0 || (size_t)n >= sizeof(path)) { errno = ENAMETOOLONG; return -1; }
 
-    if (snprintf(path, sizeof(path), "/proc/%d/setgroups", (int)getpid()) >= (int)sizeof(path))
-        return -1;
-    fp = fopen(path, "w");
-    if (fp) {
-        fputs("deny\n", fp);
+    FILE *fp = fopen(path, "w");
+    if (!fp) return -1;
+    if (fputs(value, fp) < 0) {
+        int saved = errno;
         fclose(fp);
+        errno = saved;
+        return -1;
     }
+    if (fclose(fp) != 0) return -1;
+    return 0;
+}
 
-    if (snprintf(path, sizeof(path), "/proc/%d/uid_map", (int)getpid()) >= (int)sizeof(path))
-        return -1;
-    if (snprintf(map, sizeof(map), "0 %u 1\n", (unsigned)cfg->host_uid) >= (int)sizeof(map))
-        return -1;
-    fp = fopen(path, "w");
-    if (!fp) return -1;
-    fputs(map, fp);
-    fclose(fp);
+int namespace_configure_userns(pid_t pid, uid_t host_uid, gid_t host_gid) {
+    char map[128];
 
-    if (snprintf(path, sizeof(path), "/proc/%d/gid_map", (int)getpid()) >= (int)sizeof(path))
+    if (write_proc_file(pid, "setgroups", "deny\n") < 0 && errno != ENOENT)
         return -1;
-    if (snprintf(map, sizeof(map), "0 %u 1\n", (unsigned)cfg->host_gid) >= (int)sizeof(map))
+
+    int n = snprintf(map, sizeof(map), "0 %u 1\n", (unsigned)host_uid);
+    if (n < 0 || (size_t)n >= sizeof(map)) { errno = ENAMETOOLONG; return -1; }
+    if (write_proc_file(pid, "uid_map", map) < 0)
         return -1;
-    fp = fopen(path, "w");
-    if (!fp) return -1;
-    fputs(map, fp);
-    fclose(fp);
+
+    n = snprintf(map, sizeof(map), "0 %u 1\n", (unsigned)host_gid);
+    if (n < 0 || (size_t)n >= sizeof(map)) { errno = ENAMETOOLONG; return -1; }
+    if (write_proc_file(pid, "gid_map", map) < 0)
+        return -1;
+
     return 0;
 }
 
 int namespace_setup(ContainerConfig *cfg) {
-    if (cfg->use_userns && setup_user_namespace(cfg) < 0)
-        return -1;
-
     if (sethostname(cfg->hostname ? cfg->hostname : "boxforge",
                     cfg->hostname ? strlen(cfg->hostname) : 8) < 0)
         return -1;
