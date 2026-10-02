@@ -1,12 +1,13 @@
 #ifndef BOXFORGE_H
 #define BOXFORGE_H
 
-#define _GNU_SOURCE
 #include <limits.h>
 #include <sys/types.h>
 
 #define BF_MAX_ID 64
 #define BF_STACK_SIZE (1024 * 1024)
+#define BF_MAX_INPUT 1024
+#define BF_MAX_ARGS 64
 
 typedef struct {
     const char *rootfs;
@@ -16,6 +17,9 @@ typedef struct {
     const char *cpu_limit;
     int use_userns;
     int verbose;
+    int sync_fd;
+    uid_t host_uid;
+    gid_t host_gid;
     pid_t child_pid;
     char id[BF_MAX_ID];
 } ContainerConfig;
