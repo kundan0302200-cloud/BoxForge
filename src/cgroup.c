@@ -2,7 +2,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -16,8 +15,11 @@ static int write_text(const char *path, const char *text) {
     ssize_t w = write(fd, text, n);
     int saved = errno;
     close(fd);
-    errno = saved;
-    return w == (ssize_t)n ? 0 : (w < 0 ? saved : EIO);
+    if (w != (ssize_t)n) {
+        errno = (w < 0) ? saved : EIO;
+        return -1;
+    }
+    return 0;
 }
 
 static int path_for(char *out, size_t n, const char *id, const char *file) {
@@ -37,7 +39,7 @@ int cgroup_create(const char *id, const char *memory, const char *cpu, pid_t pid
         if (parse_size_bytes(memory, &bytes) < 0) { errno = EINVAL; goto fail; }
         if (path_for(path, sizeof(path), id, "memory.max") < 0) { errno = ENAMETOOLONG; goto fail; }
         snprintf(val, sizeof(val), "%llu", bytes);
-        if (write_text(path, val) != 0) goto fail;
+        if (write_text(path, val) < 0) goto fail;
     }
 
     if (cpu) {
@@ -45,12 +47,12 @@ int cgroup_create(const char *id, const char *memory, const char *cpu, pid_t pid
         if (parse_cpu_percent(cpu, &quota, &period) < 0) { errno = EINVAL; goto fail; }
         if (path_for(path, sizeof(path), id, "cpu.max") < 0) { errno = ENAMETOOLONG; goto fail; }
         snprintf(val, sizeof(val), "%llu %llu", quota, period);
-        if (write_text(path, val) != 0) goto fail;
+        if (write_text(path, val) < 0) goto fail;
     }
 
     if (path_for(path, sizeof(path), id, "cgroup.procs") < 0) { errno = ENAMETOOLONG; goto fail; }
     snprintf(val, sizeof(val), "%d", pid);
-    if (write_text(path, val) != 0) goto fail;
+    if (write_text(path, val) < 0) goto fail;
     return 0;
 
 fail: {
