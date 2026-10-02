@@ -7,9 +7,12 @@
 #include <sys/mount.h>
 #include <unistd.h>
 
-int namespace_clone_flags(void) {
-    return CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC |
-           CLONE_NEWNET | SIGCHLD;
+int namespace_clone_flags(const ContainerConfig *cfg) {
+    int flags = CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS |
+                CLONE_NEWIPC | CLONE_NEWNET | SIGCHLD;
+    if (cfg && cfg->use_userns)
+        flags |= CLONE_NEWUSER;
+    return flags;
 }
 
 static int setup_user_namespace(ContainerConfig *cfg) {
@@ -44,11 +47,6 @@ static int setup_user_namespace(ContainerConfig *cfg) {
     return 0;
 }
 
-int namespace_clone_flags(void) {
-    return CLONE_NEWPID | CLONE_NEWNS | CLONE_NEWUTS | CLONE_NEWIPC |
-           CLONE_NEWNET | SIGCHLD;
-}
-
 int namespace_setup(ContainerConfig *cfg) {
     if (cfg->use_userns && setup_user_namespace(cfg) < 0)
         return -1;
@@ -57,8 +55,5 @@ int namespace_setup(ContainerConfig *cfg) {
                     cfg->hostname ? strlen(cfg->hostname) : 8) < 0)
         return -1;
 
-    if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) < 0)
-        return -1;
-
-    return 0;
+    return mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL);
 }
