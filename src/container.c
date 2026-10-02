@@ -30,6 +30,10 @@ static int child_main(void *arg) {
         _exit(126);
     }
 
+    setenv("PATH", "/bin:/sbin:/usr/bin:/usr/sbin", 1);
+    setenv("HOME", "/root", 1);
+    setenv("HOSTNAME", cfg->hostname ? cfg->hostname : "boxforge", 1);
+
     if (lifecycle_init() < 0) {
         perror("lifecycle init");
         _exit(127);
