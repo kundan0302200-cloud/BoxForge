@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <time.h>
 
@@ -37,11 +38,6 @@ static void help(void) {
     printf("Run syntax:\n");
     printf("  run [--memory LIMIT] [--cpu PERCENT] [--hostname NAME] [--userns] "
            "<rootfs> <command> [args...]\n\n");
-    printf("Examples:\n");
-    printf("  run ./rootfs/busybox /bin/sh\n");
-    printf("  run --memory 100M ./rootfs/busybox /bin/sh\n");
-    printf("  run --cpu 50%% ./rootfs/busybox /bin/sh\n");
-    printf("  run --userns ./rootfs/busybox /bin/sh\n\n");
 }
 
 static void version(void) {
@@ -55,6 +51,8 @@ static void make_id(char *out, size_t n) {
 
 static int execute_run(int argc, char **argv) {
     ContainerConfig cfg = {0};
+    struct stat st;
+
     cfg.hostname = "boxforge";
     cfg.host_uid = getuid();
     cfg.host_gid = getgid();
@@ -62,17 +60,16 @@ static int execute_run(int argc, char **argv) {
 
     int i = 1;
     while (i < argc) {
-        if (!strcmp(argv[i], "--memory") && i + 1 < argc) {
+        if (!strcmp(argv[i], "--memory") && i + 1 < argc)
             cfg.memory_limit = argv[++i];
-        } else if (!strcmp(argv[i], "--cpu") && i + 1 < argc) {
+        else if (!strcmp(argv[i], "--cpu") && i + 1 < argc)
             cfg.cpu_limit = argv[++i];
-        } else if (!strcmp(argv[i], "--hostname") && i + 1 < argc) {
+        else if (!strcmp(argv[i], "--hostname") && i + 1 < argc)
             cfg.hostname = argv[++i];
-        } else if (!strcmp(argv[i], "--userns")) {
+        else if (!strcmp(argv[i], "--userns"))
             cfg.use_userns = 1;
-        } else {
+        else
             break;
-        }
         i++;
     }
 
@@ -85,6 +82,13 @@ static int execute_run(int argc, char **argv) {
     cfg.rootfs = realpath(argv[i], NULL);
     if (!cfg.rootfs) {
         perror("rootfs");
+        return 1;
+    }
+
+    if (!strcmp(cfg.rootfs, "/") ||
+        stat(cfg.rootfs, &st) < 0 || !S_ISDIR(st.st_mode)) {
+        fprintf(stderr, "boxforge: rootfs must be a directory other than /.\n");
+        free((void *)cfg.rootfs);
         return 1;
     }
 
@@ -108,7 +112,6 @@ static void interactive_shell(void) {
     while (1) {
         printf("boxforge$ ");
         fflush(stdout);
-
         if (!fgets(input, sizeof(input), stdin)) {
             printf("\n");
             break;
@@ -121,7 +124,6 @@ static void interactive_shell(void) {
         int argc = 0;
         char *saveptr = NULL;
         char *token = strtok_r(input, " \t", &saveptr);
-
         while (token && argc < BF_MAX_ARGS - 1) {
             args[argc++] = token;
             token = strtok_r(NULL, " \t", &saveptr);
