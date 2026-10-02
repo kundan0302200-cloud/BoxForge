@@ -6,7 +6,7 @@ TARGET := boxforge
 SRC := src/main.c src/container.c src/namespaces.c src/filesystem.c src/cgroup.c src/lifecycle.c src/utils.c
 OBJ := $(SRC:src/%.c=build/%.o)
 
-.PHONY: all clean debug
+.PHONY: all clean debug test
 
 all: $(TARGET)
 
@@ -20,8 +20,11 @@ build:
 	mkdir -p build
 
 debug: CFLAGS += -fsanitize=address,undefined -fno-omit-frame-pointer
-
 debug: clean all
+
+test: all
+	sudo ./tests/test_isolation.sh
+	sudo ./tests/test_cleanup.sh
 
 clean:
 	rm -rf build $(TARGET)
