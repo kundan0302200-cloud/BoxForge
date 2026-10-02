@@ -20,12 +20,14 @@ static void usage(const char *p) {
         "Usage:\n"
         "  %s run [--memory LIMIT] [--cpu PERCENT] [--hostname NAME] [--userns] "
         "<rootfs> <command> [args...]\n"
+        "  %s --help\n"
+        "  %s --version\n"
         "\n"
         "Examples:\n"
         "  sudo %s run ./rootfs/busybox /bin/sh\n"
         "  sudo %s run --memory 100M --cpu 50%% ./rootfs/busybox /bin/sh\n"
         "  sudo %s run --userns ./rootfs/busybox /bin/sh\n",
-        p, p, p, p);
+        p, p, p, p, p, p);
 }
 
 static void help(void) {
@@ -153,6 +155,18 @@ int main(int argc, char **argv) {
             printf("Use 'sudo ./boxforge' to run containers.\n\n");
         }
         interactive_shell();
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "--version") || !strcmp(argv[1], "-v") ||
+        !strcmp(argv[1], "version")) {
+        version();
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-h") ||
+        !strcmp(argv[1], "help")) {
+        usage(argv[0]);
         return 0;
     }
 
