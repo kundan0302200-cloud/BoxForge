@@ -16,7 +16,6 @@ static int child_main(void *arg) {
     ContainerConfig *cfg = arg;
     char release;
 
-    /* The parent installs cgroup limits before the payload can start. */
     if (cfg->sync_fd < 0 || read(cfg->sync_fd, &release, 1) != 1)
         _exit(124);
     close(cfg->sync_fd);
@@ -65,6 +64,17 @@ int container_run(ContainerConfig *cfg) {
     cfg->child_pid = pid;
     close(sync_pipe[0]);
 
+    if (cfg->use_userns &&
+        namespace_configure_userns(pid, cfg->host_uid, cfg->host_gid) < 0) {
+        int saved = errno;
+        bf_log("user namespace mapping failed: %s", strerror(saved));
+        kill(pid, SIGKILL);
+        close(sync_pipe[1]);
+        waitpid(pid, NULL, 0);
+        errno = saved;
+        return -1;
+    }
+
     if (cgroup_create(cfg->id, cfg->memory_limit, cfg->cpu_limit, pid) < 0) {
         int saved = errno;
         bf_log("cgroup setup failed: %s", strerror(saved));
@@ -76,14 +86,13 @@ int container_run(ContainerConfig *cfg) {
         return -1;
     }
 
-    /* Release the child only after cgroup setup succeeds. */
     if (write(sync_pipe[1], "1", 1) != 1) {
-        int saved = errno;
+        int saved = errno ? errno : EIO;
         kill(pid, SIGKILL);
         close(sync_pipe[1]);
         waitpid(pid, NULL, 0);
         cgroup_remove(cfg->id);
-        errno = saved ? saved : EIO;
+        errno = saved;
         return -1;
     }
     close(sync_pipe[1]);
