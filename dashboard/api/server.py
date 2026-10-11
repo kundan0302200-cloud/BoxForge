@@ -62,7 +62,7 @@ def safe_rootfs(raw: str) -> Path:
 def parse_memory(raw: Optional[str]) -> Optional[str]:
     if raw is None or raw == "":
         return None
-    if not re.fullmatch(r"[1-9][0-9]*(?:K|KB|M|MB|G|GB|KiB|MiB|GiB)?", raw, re.I):
+    if not re.fullmatch(r"[1-9][0-9]*(?:K|KB|M|MB|G|GB)?", raw, re.I):
         raise HTTPException(400, "Invalid memory limit. Examples: 64M, 256M, 1G.")
     return raw
 
