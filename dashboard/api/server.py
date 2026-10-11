@@ -86,6 +86,7 @@ class LaunchRequest(BaseModel):
     cpu: Optional[str] = None
     hostname: str = Field(default="boxforge", min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9.-]*$")
     userns: bool = False
+    args: list[str] = Field(default_factory=list, max_length=32)
 
     @field_validator("command")
     @classmethod
@@ -217,7 +218,9 @@ def create_container(payload: LaunchRequest):
         args += ["--cpu", cpu]
     if payload.userns:
         args.append("--userns")
-    args += [str(rootfs), payload.command]
+    if any("\\x00" in value or len(value) > 256 for value in payload.args):
+        raise HTTPException(400, "Each command argument must be 256 characters or fewer and contain no NUL bytes.")
+    args += [str(rootfs), payload.command, *payload.args]
     try:
         proc = subprocess.Popen(args, cwd=str(REPO), stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
