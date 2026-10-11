@@ -22,4 +22,10 @@ net_output=$(./boxforge run "$ROOTFS" /bin/sh -c 'cat /proc/net/dev')
 echo "$net_output"
 grep -q 'lo:' <<< "$net_output"
 
+echo "== Minimal device exposure =="
+dev_output=$(./boxforge run "$ROOTFS" /bin/sh -c 'test -c /dev/null && echo DEV_NULL_OK; echo safe >/dev/null')
+echo "$dev_output"
+grep -q '^DEV_NULL_OK
+ <<< "$dev_output"
+
 echo "Isolation tests passed."
