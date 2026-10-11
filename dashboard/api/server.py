@@ -138,7 +138,10 @@ def watch_process(container_id: str, proc: subprocess.Popen) -> None:
         item = _containers.get(container_id)
         if not item:
             return
-        item["status"] = "exited" if proc.returncode == 0 else "failed"
+        if item.get("status") == "stopping":
+            item["status"] = "stopped"
+        else:
+            item["status"] = "exited" if proc.returncode == 0 else "failed"
         item["exit_code"] = proc.returncode
         item["finished_at"] = now()
         name = item["name"]
@@ -257,6 +260,8 @@ def stop_container(container_id: str):
     proc = item.get("process")
     if not proc or proc.poll() is not None:
         return {"ok": True, "status": item.get("status", "exited")}
+    with _lock:
+        item["status"] = "stopping"
     try:
         os.killpg(proc.pid, signal.SIGTERM)
         try:
