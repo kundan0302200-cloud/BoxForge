@@ -89,3 +89,14 @@ The memory test builds a small static allocator workload and expects a 64 MiB cg
 ## Security note
 
 BoxForge is an educational runtime, not a production security boundary. Production runtimes require additional capability, seccomp, LSM, device-policy, path-handling and image-management hardening.
+
+
+## BoxForge Studio dashboard
+
+The repository includes a local web dashboard for viewing container state, runtime health, events, logs and cgroup metrics.
+
+### Start the dashboard
+
+Build BoxForge first, then follow [dashboard/README.md](dashboard/README.md). The API must run with the privileges needed by the runtime and must remain bound to `127.0.0.1`. The dashboard is for local development and does not make BoxForge a production security boundary.
+
+The dashboard currently manages non-interactive workloads. Use the existing CLI for interactive shells.
