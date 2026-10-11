@@ -34,17 +34,38 @@ static int ensure_file(const char *path, mode_t mode) {
     return 0;
 }
 
-static void bind_device(const char *source, const char *target) {
-    if (ensure_file(target, 0666) < 0) {
-        bf_log("warning: cannot create %s: %s", target, strerror(errno));
-        return;
+/* Bind only selected host device nodes into the new rootfs before pivot_root.
+ * Doing this after pivot_root would resolve the source paths inside the container. */
+static int bind_device(const char *rootfs, const char *name) {
+    char source[PATH_MAX], target[PATH_MAX];
+    int a = snprintf(source, sizeof(source), "/dev/%s", name);
+    int b = snprintf(target, sizeof(target), "%s/dev/%s", rootfs, name);
+    if (a < 0 || (size_t)a >= sizeof(source) ||
+        b < 0 || (size_t)b >= sizeof(target)) {
+        errno = ENAMETOOLONG;
+        return -1;
     }
-    if (mount(source, target, NULL, MS_BIND, NULL) < 0)
-        bf_log("warning: unable to expose %s: %s", source, strerror(errno));
+    if (ensure_file(target, 0666) < 0) return -1;
+    if (mount(source, target, NULL, MS_BIND, NULL) < 0) return -1;
+    return 0;
 }
 
 int filesystem_setup(const char *rootfs) {
+    static const char *devices[] = {"null", "zero", "random", "urandom", "tty"};
     if (!rootfs || rootfs[0] != '/') { errno = EINVAL; return -1; }
+
+    char devdir[PATH_MAX];
+    int n = snprintf(devdir, sizeof(devdir), "%s/dev", rootfs);
+    if (n < 0 || (size_t)n >= sizeof(devdir)) { errno = ENAMETOOLONG; return -1; }
+    if (ensure_dir(devdir) < 0) return -1;
+
+    for (size_t i = 0; i < sizeof(devices) / sizeof(devices[0]); i++) {
+        if (bind_device(rootfs, devices[i]) < 0) {
+            bf_log("warning: unable to expose /dev/%s in rootfs: %s",
+                   devices[i], strerror(errno));
+        }
+    }
+
     if (do_pivot_root(rootfs) < 0) return -1;
 
     if (mkdir("/proc", 0555) < 0 && errno != EEXIST) return -1;
@@ -55,14 +76,6 @@ int filesystem_setup(const char *rootfs) {
     if (mount("sysfs", "/sys", "sysfs",
               MS_NOSUID | MS_NODEV | MS_NOEXEC | MS_RDONLY, "") < 0)
         bf_log("warning: /sys mount unavailable: %s", strerror(errno));
-
-    /* Do not expose the complete host /dev tree. */
-    if (mkdir("/dev", 0755) < 0 && errno != EEXIST) return -1;
-    bind_device("/dev/null", "/dev/null");
-    bind_device("/dev/zero", "/dev/zero");
-    bind_device("/dev/random", "/dev/random");
-    bind_device("/dev/urandom", "/dev/urandom");
-    bind_device("/dev/tty", "/dev/tty");
 
     if (mkdir("/tmp", 01777) < 0 && errno != EEXIST) return -1;
     return 0;
